@@ -12,6 +12,7 @@ package main
 import (
 	"machine"
 	"math"
+	"strconv"
 
 	"image/color"
 	"time"
@@ -24,6 +25,7 @@ import (
 
 const (
 	numLEDs = 28 // Adjust this to match your LED strip
+	SPEED   = 16
 )
 
 const (
@@ -32,6 +34,7 @@ const (
 	LEFT
 	DOWN
 	UP
+	HAND
 )
 
 const (
@@ -56,6 +59,8 @@ const (
 
 var (
 	neo                                            machine.Pin = machine.A1
+	jx                                             machine.ADC
+	jy                                             machine.ADC
 	leds                                           [28]color.RGBA
 	ledBytes                                       []byte
 	display                                        ssd1306.Device
@@ -80,13 +85,16 @@ var (
 		machine.GPIO16,
 		machine.GPIO15,
 		machine.GPIO25,
+		machine.GPIO26,
 	}
-	debounceBtn [5]bool
-	pressedBtn  [5]bool
+	debounceBtn [6]bool
+	pressedBtn  [6]bool
 )
 
 func main() {
 	waitSerial()
+
+	machine.InitADC()
 
 	machine.I2C0.Configure(machine.I2CConfig{
 		Frequency: machine.TWI_FREQ_400KHZ,
@@ -118,8 +126,14 @@ func main() {
 		gpioPins[c].Configure(machine.PinConfig{Mode: machine.PinInputPullup})
 	}
 
+	//jx := machine.ADC{machine.A2}
+	jx = machine.ADC{machine.A3}
+	jy = machine.ADC{machine.A2}
+	jx.Configure(machine.ADCConfig{})
+	jy.Configure(machine.ADCConfig{})
+
 	ledBytes = make([]byte, numLEDs*3)
-	//connect()
+	connect()
 
 	x := int16(0)
 	y := int16(0)
@@ -139,14 +153,11 @@ func main() {
 				if !debounceBtn[c] {
 					pressedBtn[c] = true
 				}
-				//print("1")
 				debounceBtn[c] = true
 			} else {
-				//print("0")
 				debounceBtn[c] = false
 			}
 		}
-		//println("----------------")
 
 		mx, _, my, err = sensor.ReadMagneticField()
 		if err != nil {
@@ -156,7 +167,6 @@ func main() {
 		headingRads = math.Atan2(yf, xf)
 
 		// Calculate which LED should be lit (assuming LED 0 is at 0 degrees)
-		//heading = int(math.Round(headingDegrees / (360 / float64(2*numLEDs))))
 		heading = int((float64(numLEDs) * headingRads) / math.Pi)
 		heading = numLEDs - 1 - heading - (numLEDs / 2)
 		ledIndex = heading + offsetHeading
@@ -164,7 +174,6 @@ func main() {
 			ledIndex += (2 * numLEDs)
 		}
 		ledIndex %= (2 * numLEDs)
-		//println("LEDINDEX", ledIndex, heading, offsetHeading)
 
 		// Clear all LEDs
 		for i := range leds {
@@ -194,7 +203,6 @@ func main() {
 			// gamma correction
 			brightness = int(math.Pow(float64(brightness)/255, 2.5) * 255)
 
-			//println("BRIGHTNESS", brightness)
 			c := color.RGBA{0, 0, byte(brightness), 255}
 			success := true
 			for i := byte(0); i < circleArc; i++ {
@@ -220,6 +228,9 @@ func main() {
 				}
 			}
 
+			//data = []byte{circleArc, circleOrientation, circleRadius}
+			//publishData(circlesTopic, &data)
+
 			break
 		case GAMEOVER:
 			for i := 0; i < 5; i++ {
@@ -237,19 +248,28 @@ func main() {
 			game = CIRCLE
 			break
 		case MAZE:
-			if pressedBtn[DOWN] {
-				px += int(30 * math.Sin(offsetHeadingRads-headingRads))
-				py -= int(30 * math.Cos(offsetHeadingRads-headingRads))
+			mapx = px
+			mapy = py
+			if jy.Get() < 1000 {
+				px += int(SPEED * math.Sin(offsetHeadingRads-headingRads))
+				py -= int(SPEED * math.Cos(offsetHeadingRads-headingRads))
+			} else if jy.Get() > 64000 {
+				px -= int(SPEED * math.Sin(offsetHeadingRads-headingRads))
+				py += int(SPEED * math.Cos(offsetHeadingRads-headingRads))
 			}
-			if pressedBtn[UP] {
-				py += 30
+			if jx.Get() < 1000 {
+				py -= int(SPEED * math.Sin(offsetHeadingRads-headingRads))
+				px += int(SPEED * math.Cos(offsetHeadingRads-headingRads))
+			} else if jx.Get() > 64000 {
+				py += int(SPEED * math.Sin(offsetHeadingRads-headingRads))
+				px -= int(SPEED * math.Cos(offsetHeadingRads-headingRads))
 			}
-			if pressedBtn[LEFT] {
-				px += 30
+
+			if maze[py/TILESIZE][px/TILESIZE] {
+				px = mapx
+				py = mapy
 			}
-			if pressedBtn[RIGHT] {
-				px -= 30
-			}
+
 			if px < 0 {
 				px = 0
 			} else if px > 9600 {
@@ -268,13 +288,30 @@ func main() {
 				c := color.RGBA{0, 0, byte(brightness), 255}
 				leds[int(i)] = c
 			}
-			println(int((headingRads*180)/math.Pi), int((offsetHeadingRads*180)/math.Pi), int(((offsetHeadingRads-headingRads)*180)/math.Pi), heading, offsetHeading)
-			printTile(px, py)
+			//println(int((headingRads*180)/math.Pi), int((offsetHeadingRads*180)/math.Pi), int(((offsetHeadingRads-headingRads)*180)/math.Pi), heading, offsetHeading)
+			//printTile(px, py)
+
+			data = []byte{
+				byte(px >> 24),
+				byte(px >> 16),
+				byte(px >> 8),
+				byte(px),
+				byte(py >> 24),
+				byte(py >> 16),
+				byte(py >> 8),
+				byte(py),
+			}
+			publishData(mazeTopic, &data)
 
 			break
 		}
 
 		ws.WriteColors(leds[:])
+
+		// PUBLISH TO MQTT
+		data = []byte(strconv.Itoa(ledIndex))
+		publishData(orientationTopic, &data)
+		publishData(ledsTopic, &ledBytes)
 
 		switch mode {
 		case IDLE:

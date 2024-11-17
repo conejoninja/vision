@@ -13,10 +13,6 @@ import (
 	"tinygo.org/x/drivers/netlink/probe"
 )
 
-// IP address of the MQTT broker to use. Replace with your own info.
-// const server = MQTTProtocol + "://" + MQTTServer + ":" + MQTTPort
-const server = MQTTServer + ":" + MQTTPort
-
 // change these to connect to a different UART or pins for the ESP8266/ESP32
 var (
 	cl *mqtt.Client
@@ -24,11 +20,17 @@ var (
 	connectedWifi bool
 	connectedMQTT bool
 	pubVar        mqtt.VariablesPublish
+
+	// IP address of the MQTT broker to use. Replace with your own info.
+	// const server = MQTTProtocol + "://" + MQTTServer + ":" + MQTTPort
+	server = MQTTServer + ":" + MQTTPort
 )
 
 func connect() {
-	if connectToAP() {
-		connectToMQTT()
+	if WifiSSID != "" && server != "" {
+		if connectToAP() {
+			connectToMQTT()
+		}
 	}
 }
 
