@@ -137,7 +137,7 @@ func publishData(topic string, data *[]byte) {
 	pubVar.TopicName = []byte(topic)
 	pubVar.PacketIdentifier++
 
-	println("[PUBLISH DATA]", "#"+topic, "MSG TO SEND", string(*data))
+	//println("[PUBLISH DATA]", "#"+topic, "MSG TO SEND", string(*data))
 	err := cl.PublishPayload(pubFlags, pubVar, *data)
 	if err != nil {
 		println("error transmitting message: ", err)

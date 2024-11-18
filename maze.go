@@ -59,16 +59,16 @@ func castRay(rayAngle float64) int {
 	dx = math.Cos(rayAngle)
 	dy = math.Sin(rayAngle)
 
-	for i := 1; i < MAXDIST; i += 2 {
-		mapx = (px + int(dx*float64(i))) / TILESIZE
-		mapy = (py + int(dy*float64(i))) / TILESIZE
+	for i := float64(1); i < MAXDIST; i += 2 {
+		mapx = (px + int(dx*i)) / TILESIZE
+		mapy = (py + int(dy*i)) / TILESIZE
 
 		if mapx < 0 || mapy < 0 || mapx >= MAZESIZE || mapy >= MAZESIZE {
-			return i
+			return int(i)
 		}
 
 		if maze[mapy][mapx] {
-			return i
+			return int(i)
 		}
 	}
 	return MAXDIST

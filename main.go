@@ -288,7 +288,7 @@ func main() {
 				c := color.RGBA{0, 0, byte(brightness), 255}
 				leds[int(i)] = c
 			}
-			//println(int((headingRads*180)/math.Pi), int((offsetHeadingRads*180)/math.Pi), int(((offsetHeadingRads-headingRads)*180)/math.Pi), heading, offsetHeading)
+			println(int((headingRads*180)/math.Pi), int((offsetHeadingRads*180)/math.Pi), int(((offsetHeadingRads-headingRads)*180)/math.Pi), heading, offsetHeading, ledIndex)
 			//printTile(px, py)
 
 			data = []byte{

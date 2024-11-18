@@ -1,0 +1,7 @@
+import 'dart:io' show Platform;
+
+class Config {
+  static const String MQTTServer = '';
+  static const String MQTTUser = '';
+  static const String MQTTPassword = '';
+}
