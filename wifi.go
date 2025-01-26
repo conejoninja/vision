@@ -142,6 +142,7 @@ func publishData(topic string, data *[]byte) {
 	if err != nil {
 		println("error transmitting message: ", err)
 	}
+
 }
 
 // Returns an int >= min, < max

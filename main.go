@@ -1,12 +1,3 @@
-// This example shows how to use 128x64 display over I2C
-// Tested on Seeeduino XIAO Expansion Board https://wiki.seeedstudio.com/Seeeduino-XIAO-Expansion-Board/
-//
-// According to manual, I2C address of the display is 0x78, but that's 8-bit address.
-// TinyGo operates on 7-bit addresses and respective 7-bit address would be 0x3C, which we use below.
-//
-// To learn more about different types of I2C addresses, please see following page
-// https://www.totalphase.com/support/articles/200349176-7-bit-8-bit-and-10-bit-I2C-Slave-Addressing
-
 package main
 
 import (
@@ -69,7 +60,7 @@ var (
 	ledIndex, heading, offsetHeading, circleRadius int
 	headingRads, offsetHeadingRads                 float64
 	mode                                           = IDLE
-	game                                           = MAZE
+	game                                           = CIRCLE
 
 	colors = []color.RGBA{
 		color.RGBA{255, 255, 255, 255},
@@ -109,15 +100,23 @@ func main() {
 
 	display.ClearDisplay()
 
+	_, w := tinyfont.LineWidth(&tinyfont.Org01, "BOOT UP...")
+	tinyfont.WriteLine(&display, &tinyfont.Org01, int16(128-w)/2, 40, "BOOT UP...", colors[WHITE])
+	display.Display()
+
 	sensor := lsm303agr.New(machine.I2C0)
 	err := sensor.Configure(lsm303agr.Configuration{}) //default settings
 	if err != nil {
+		display.ClearDisplay()
+		_, w := tinyfont.LineWidth(&tinyfont.Org01, "FAILED")
+		tinyfont.WriteLine(&display, &tinyfont.Org01, int16(128-w)/2, 40, "FAILED", colors[WHITE])
+		display.Display()
 		for {
 			println("Failed to configure", err.Error())
 			time.Sleep(time.Second)
 		}
 	}
-	println("Boot up")
+
 	neo.Configure(machine.PinConfig{Mode: machine.PinOutput})
 
 	ws := ws2812.NewWS2812(neo)
@@ -133,6 +132,12 @@ func main() {
 	jy.Configure(machine.ADCConfig{})
 
 	ledBytes = make([]byte, numLEDs*3)
+
+	display.ClearDisplay()
+	_, w = tinyfont.LineWidth(&tinyfont.Org01, "CONNECTING")
+	tinyfont.WriteLine(&display, &tinyfont.Org01, int16(128-w)/2, 40, "CONNECTING", colors[WHITE])
+	display.Display()
+
 	connect()
 
 	x := int16(0)
@@ -146,6 +151,12 @@ func main() {
 	circleArc = numLEDs
 	circleOrientation = byte(randomInt(0, numLEDs*2))
 	circleRadius = 300
+
+	display.ClearDisplay()
+	_, w = tinyfont.LineWidth(&tinyfont.Org01, "CONNECTED")
+	tinyfont.WriteLine(&display, &tinyfont.Org01, int16(128-w)/2, 40, "CONNECTED", colors[WHITE])
+	display.Display()
+
 	for {
 		for c := range gpioPins {
 			pressedBtn[c] = false
@@ -222,14 +233,26 @@ func main() {
 
 			circleRadius--
 			if circleRadius < 56 {
-				circleRadius = 300
 				if !success {
 					game = GAMEOVER
 				}
+				circleArc++
+				circleRadius = 300
+				circleOrientation = byte(randomInt(0, numLEDs*2))
 			}
 
-			//data = []byte{circleArc, circleOrientation, circleRadius}
-			//publishData(circlesTopic, &data)
+			data = []byte(strconv.Itoa(int(circleArc)))
+			//println("DATA", data, circleArc, int(circleArc), strconv.Itoa(int(circleArc)))
+			publishData(circlesArcTopic, &data)
+			data = []byte(strconv.Itoa(int(circleOrientation)))
+			publishData(circlesOrientationTopic, &data)
+			data = []byte{
+				byte(circleRadius >> 24),
+				byte(circleRadius >> 16),
+				byte(circleRadius >> 8),
+				byte(circleRadius),
+			}
+			publishData(circlesRadiusTopic, &data)
 
 			break
 		case GAMEOVER:
@@ -333,7 +356,7 @@ func main() {
 			if y == 0 || y == 63 {
 				deltaY = -deltaY
 			}
-			if pressedBtn[MID] {
+			if pressedBtn[UP] {
 				mode = CENTERING
 			}
 			break
@@ -342,7 +365,7 @@ func main() {
 			_, w := tinyfont.LineWidth(&tinyfont.Org01, "CENTERING")
 			tinyfont.WriteLine(&display, &tinyfont.Org01, int16(128-w)/2, 40, "CENTERING", colors[WHITE])
 			display.Display()
-			if pressedBtn[MID] {
+			if pressedBtn[UP] {
 				display.ClearDisplay()
 				display.Display()
 				offsetHeading = (numLEDs / 2) - heading
@@ -351,13 +374,6 @@ func main() {
 			}
 			break
 		}
-
-		// PUBLISH TO MQTT
-		/*data = []byte(strconv.Itoa(ledIndex))
-		publishData(orientationTopic, &data)
-		publishData(ledsTopic, &ledBytes)
-		data = []byte{circleArc, circleOrientation, circleRadius}
-		publishData(circlesTopic, &data)*/
 
 		time.Sleep(50 * time.Millisecond)
 	}

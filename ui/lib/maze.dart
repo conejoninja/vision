@@ -44,7 +44,7 @@ class MazePainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     final Paint viewPaint = Paint()
-      ..color = Colors.red.withOpacity(0.2)
+      ..color = Colors.red.withOpacity(0.8)
       ..style = PaintingStyle.fill;
 
     // Draw grid and walls
