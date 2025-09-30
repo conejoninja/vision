@@ -8,6 +8,7 @@ import (
 	"image/color"
 	"time"
 
+	"tinygo.org/x/drivers"
 	"tinygo.org/x/drivers/lsm303agr"
 	"tinygo.org/x/drivers/ssd1306"
 	"tinygo.org/x/drivers/ws2812"
@@ -15,7 +16,7 @@ import (
 )
 
 const (
-	numLEDs = 28 // Adjust this to match your LED strip
+	NUMLEDS = 44 // Adjust this to match your LED strip
 	SPEED   = 16
 )
 
@@ -48,11 +49,13 @@ const (
 	BLUE
 )
 
+const useWifi = false
+
 var (
 	neo                                            machine.Pin = machine.A1
 	jx                                             machine.ADC
 	jy                                             machine.ADC
-	leds                                           [28]color.RGBA
+	leds                                           [NUMLEDS]color.RGBA
 	ledBytes                                       []byte
 	display                                        ssd1306.Device
 	data                                           []byte
@@ -60,7 +63,7 @@ var (
 	ledIndex, heading, offsetHeading, circleRadius int
 	headingRads, offsetHeadingRads                 float64
 	mode                                           = IDLE
-	game                                           = CIRCLE
+	game                                           = MAZE
 
 	colors = []color.RGBA{
 		color.RGBA{255, 255, 255, 255},
@@ -83,7 +86,7 @@ var (
 )
 
 func main() {
-	waitSerial()
+	//waitSerial()
 
 	machine.InitADC()
 
@@ -93,15 +96,16 @@ func main() {
 
 	display := ssd1306.NewI2C(machine.I2C0)
 	display.Configure(ssd1306.Config{
-		Address: 0x3C,
-		Width:   128,
-		Height:  64,
+		Address:  0x3C,
+		Width:    128,
+		Height:   64,
+		Rotation: drivers.Rotation180,
 	})
 
 	display.ClearDisplay()
 
 	_, w := tinyfont.LineWidth(&tinyfont.Org01, "BOOT UP...")
-	tinyfont.WriteLine(&display, &tinyfont.Org01, int16(128-w)/2, 40, "BOOT UP...", colors[WHITE])
+	tinyfont.WriteLine(display, &tinyfont.Org01, int16(128-w)/2, 40, "BOOT UP...", colors[WHITE])
 	display.Display()
 
 	sensor := lsm303agr.New(machine.I2C0)
@@ -109,7 +113,7 @@ func main() {
 	if err != nil {
 		display.ClearDisplay()
 		_, w := tinyfont.LineWidth(&tinyfont.Org01, "FAILED")
-		tinyfont.WriteLine(&display, &tinyfont.Org01, int16(128-w)/2, 40, "FAILED", colors[WHITE])
+		tinyfont.WriteLine(display, &tinyfont.Org01, int16(128-w)/2, 40, "FAILED", colors[WHITE])
 		display.Display()
 		for {
 			println("Failed to configure", err.Error())
@@ -131,30 +135,30 @@ func main() {
 	jx.Configure(machine.ADCConfig{})
 	jy.Configure(machine.ADCConfig{})
 
-	ledBytes = make([]byte, numLEDs*3)
+	ledBytes = make([]byte, NUMLEDS*3)
 
 	display.ClearDisplay()
 	_, w = tinyfont.LineWidth(&tinyfont.Org01, "CONNECTING")
-	tinyfont.WriteLine(&display, &tinyfont.Org01, int16(128-w)/2, 40, "CONNECTING", colors[WHITE])
+	tinyfont.WriteLine(display, &tinyfont.Org01, int16(128-w)/2, 40, "CONNECTING", colors[WHITE])
 	display.Display()
 
 	connect()
 
 	x := int16(0)
 	y := int16(0)
-	var mx, my int32
-	var xf, yf float64
+	var mx, my, mz int32
+	var xf, yf, zf, normalized float64
 	px = 720
 	py = 360
 	deltaX := int16(1)
 	deltaY := int16(1)
-	circleArc = numLEDs
-	circleOrientation = byte(randomInt(0, numLEDs*2))
+	circleArc = NUMLEDS
+	circleOrientation = byte(randomInt(0, NUMLEDS*2))
 	circleRadius = 300
 
 	display.ClearDisplay()
 	_, w = tinyfont.LineWidth(&tinyfont.Org01, "CONNECTED")
-	tinyfont.WriteLine(&display, &tinyfont.Org01, int16(128-w)/2, 40, "CONNECTED", colors[WHITE])
+	tinyfont.WriteLine(display, &tinyfont.Org01, int16(128-w)/2, 40, "CONNECTED", colors[WHITE])
 	display.Display()
 
 	for {
@@ -170,21 +174,36 @@ func main() {
 			}
 		}
 
-		mx, _, my, err = sensor.ReadMagneticField()
+		my, mz, mx, err = sensor.ReadMagneticField()
+		//println(mx, my, mz)
 		if err != nil {
 			return
 		}
-		xf, yf = float64(mx), float64(my)
+		xf = float64(mx) / 1000
+		yf = float64(my) / 1000
+		zf = float64(mz) / 1000
+		normalized = math.Sqrt(xf*xf + yf*yf + zf*zf)
+		xf = xf / normalized
+		yf = yf / normalized
+		zf = zf / normalized
+
+		phi := math.Asin(zf)
+		cosPHi := math.Cos(phi)
+
+		xf = xf * cosPHi
+		yf = yf * cosPHi
+
 		headingRads = math.Atan2(yf, xf)
 
 		// Calculate which LED should be lit (assuming LED 0 is at 0 degrees)
-		heading = int((float64(numLEDs) * headingRads) / math.Pi)
-		heading = numLEDs - 1 - heading - (numLEDs / 2)
+		heading = int((float64(NUMLEDS) * headingRads) / math.Pi)
+		heading = NUMLEDS - 1 - heading - (NUMLEDS / 2)
 		ledIndex = heading + offsetHeading
 		if ledIndex < 0 {
-			ledIndex += (2 * numLEDs)
+			ledIndex += (2 * NUMLEDS)
 		}
-		ledIndex %= (2 * numLEDs)
+		ledIndex %= (2 * NUMLEDS)
+		println("LED INDEX", ledIndex)
 
 		// Clear all LEDs
 		for i := range leds {
@@ -196,7 +215,7 @@ func main() {
 
 		switch game {
 		case NORTH:
-			if ledIndex >= 0 && ledIndex < numLEDs {
+			if ledIndex >= 0 && ledIndex < NUMLEDS {
 				leds[ledIndex] = colors[RED]
 				ledBytes[3*ledIndex] = 255
 				ledBytes[3*ledIndex+1] = 0
@@ -219,17 +238,17 @@ func main() {
 			for i := byte(0); i < circleArc; i++ {
 				idx := i + circleOrientation + byte(heading+offsetHeading)
 				if idx < 0 {
-					idx += numLEDs * 2
+					idx += NUMLEDS * 2
 				}
-				idx %= (numLEDs * 2)
-				if idx > 0 && idx < numLEDs {
+				idx %= (NUMLEDS * 2)
+				if idx > 0 && idx < NUMLEDS {
 					leds[idx] = c
 					if idx == 13 {
 						success = false
 					}
 				}
 			}
-			leds[13] = colors[RED]
+			//leds[13] = colors[RED]
 
 			circleRadius--
 			if circleRadius < 56 {
@@ -238,7 +257,7 @@ func main() {
 				}
 				circleArc++
 				circleRadius = 300
-				circleOrientation = byte(randomInt(0, numLEDs*2))
+				circleOrientation = byte(randomInt(0, NUMLEDS*2))
 			}
 
 			data = []byte(strconv.Itoa(int(circleArc)))
@@ -304,8 +323,8 @@ func main() {
 				py = 9600
 			}
 
-			for i := float64(0); i < numLEDs; i++ {
-				brightness := 300 - castRay(offsetHeadingRads-headingRads-i*(math.Pi/float64(numLEDs)))
+			for i := float64(0); i < NUMLEDS; i++ {
+				brightness := 300 - castRay(offsetHeadingRads-headingRads-i*(math.Pi/float64(NUMLEDS)))
 				// gamma correction
 				brightness = int(math.Pow(float64(brightness)/255, 2.6) * 255)
 				c := color.RGBA{0, 0, byte(brightness), 255}
@@ -359,16 +378,19 @@ func main() {
 			if pressedBtn[UP] {
 				mode = CENTERING
 			}
+			if pressedBtn[DOWN] {
+				offsetHeadingRads++
+			}
 			break
 		case CENTERING:
 			display.ClearDisplay()
 			_, w := tinyfont.LineWidth(&tinyfont.Org01, "CENTERING")
-			tinyfont.WriteLine(&display, &tinyfont.Org01, int16(128-w)/2, 40, "CENTERING", colors[WHITE])
+			tinyfont.WriteLine(display, &tinyfont.Org01, int16(128-w)/2, 40, "CENTERING", colors[WHITE])
 			display.Display()
 			if pressedBtn[UP] {
 				display.ClearDisplay()
 				display.Display()
-				offsetHeading = (numLEDs / 2) - heading
+				offsetHeading = (NUMLEDS / 2) - heading
 				offsetHeadingRads = headingRads
 				mode = IDLE
 			}

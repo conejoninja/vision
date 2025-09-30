@@ -27,7 +27,7 @@ var (
 )
 
 func connect() {
-	if WifiSSID != "" && server != "" {
+	if useWifi && WifiSSID != "" && server != "" {
 		if connectToAP() {
 			connectToMQTT()
 		}
